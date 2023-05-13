@@ -1,0 +1,339 @@
+to check data type of all column present in different tables,:---
+
+for table in table_list:
+	print('\ntable:', table)
+	column_info = connection.execute("PRAGMA table_info({})".format(table) )
+	for column in column_info.fetchall():
+		print(column[1:3])
+
+
+***********************************************
+for checking missing values:--
+
+
+	for table in table_list:
+	print('\ntable:',table)
+	df_table = pd.read_sql_query(f"select * from {table}", connection)
+	print (df_table.isnull().sum())
+
+
+**********************************************
+
+
+BASIC ANALYSIS:--
+
+1:) How may planes have more than 100 seats..?
+		
+	pd.read_sql_query("""select aircraft_code, count(*) as num_seats from seats
+			group by aircraft_code""" , connection)
+
+
+
+
+****************************************************
+
+
+
+
+2:) Number of ticket booked and total amount earned changed with time...
+
+{We'll polot line graph for this becoz it shows the result in a best way when we want to show anything changes with time.}
+
+1st:--- join the table 'booking' with 'tickets'
+
+	tickets = pd.read_sql_query("select * from tickets inner join bookings on tickets.book_ref = bookings.book_ref" , connection)
+	tickets
+
+
+
+2nd:-- We'll check the data types
+	
+	tickets.dtypes
+
+	o/p:-- 
+
+ticket_no       object
+book_ref        object
+passenger_id    object
+book_ref        object
+book_date       object
+total_amount     int64
+dtype: object
+
+
+
+	book_date is in "object" form. We need to convert it into Date format.
+
+
+-->	tickets = pd.read_sql_query("select * from tickets inner join bookings on tickets.book_ref = bookings.book_ref" , connection)
+	tickets['book_date'] = pd.to_datetime(tickets['book_date'])
+	tickets.dtypes
+
+
+	o/p:--
+	
+ticket_no                                      object
+book_ref                                       object
+passenger_id                                   object
+book_ref                                       object
+book_date       datetime64[ns, pytz.FixedOffset(180)]
+total_amount                                    int64
+dtype: object
+
+
+
+
+Now, to check on which date the average number of tickets booked....
+	First i need to extract the date from datetime column of the data frame.
+
+
+
+tickets[ 'book _date'] = pd.to_datetime(tickets['book_date'])
+tickets['date'] = tickets['book _date'].dt.date
+tickets
+		
+
+--> now to count the number of  ticket booked on a particular day..
+
+	tickets.groupby('date')[['date']].count()
+
+
+
+----> to plot a graph
+
+x = tickets.groupby('date')[['date']].count()
+{The meaning of the above line is grouping the data by date and then counting the number of tickets booked for each unique date.}
+
+
+plt.figure(figsize = (18,6))
+plt.plot(x.index, x['date'], marker = '^')
+plt.xlabel('Date', fontsize = 20)
+plt.ylabel('Number of Tickets', fontsize = 20)
+plt.grid('b')
+plt.show()
+
+--> to plot a graph for total amount
+
+1st we'll 
+	bookings = pd.read_sql_query("select * from bookings" , connection)
+	bookings
+
+
+
+--> after running this query i have obseved that i need to again fetch the date from datetime for this,
+
+bookings = pd.read_sql_query("select * from bookings" , connection)
+bookings[ 'book _date'] = pd.to_datetime(bookings['book_date'])
+bookings['date'] = bookings['book _date'].dt.date
+bookings
+
+
+
+
+---> now. to count total according to the date.
+
+	bookings.groupby('date')[['total_amount']].sum()
+
+
+
+
+
+---> to plot a graph according to the total amount earned day wise..
+
+	x= bookings.groupby('date')[['total_amount']].sum()
+plt.figure(figsize = (18,6))
+plt.plot(x.index, x['total_amount'], marker = "*")
+plt.xlabel( 'Date', fontsize = 20)
+plt.ylabel('Total amount earned', fontsize = 20)
+plt.grid("b")
+plt.show()
+
+
+
+
+
+************************************************************
+
+
+
+3) **calculate the average charges for each aircraft with different fare condition**
+
+join the tables
+
+	df = pd.read_sql_query("""select * from ticket_flights join flights on ticket_flights.flight_id = flights.flight_id""", connection)
+
+
+---> to find the average amount as per fare_condition
+
+	         df = pd.read_sql_query("""select fare_conditions , aircraft_code, avg(amount) from ticket_flights join flights
+				on ticket_flights.flight_id = flights.flight_id
+                          			group by aircraft_code , fare_conditions""", connection)
+
+
+
+---> To plot a graph:--
+
+	sns.barplot(data = df , x = 'aircraft_code', y="avg(amount)" ,hue="fare_conditions")
+
+
+
+**************************************************************************---------------------------------------
+
+# Analyzing Occupancy Rate
+
+
+1:) For each aircraft, calculate total revenue per year and average revenue per ticket.
+
+---> To find the average revenue we need to focus on total_revenue, ticket_count , if we divide total_revnue / ticket_count we'll get average revenue per ticket. and then we'll match this value with aircraft code.(We have to consider ticket_flight nad flight)
+
+
+
+---> Now, 
+
+	pd.read_sql_query("""select aircraft_code,ticket_count,total_revenue, total_revenue/ticket_count from
+					(select aircraft_code,count(*) as ticket_count ,sum(amount) as total_revenue from ticket_flights
+					 join flights on ticket_flights.flight_id = flights.flight_id group by aircraft_code)""" , connection)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***********************************************************************
+
+
+
+
+2:) Calculate average occupance per aircraft.
+
+
+--> To calculate average occupancy per aircraft  we need to join boarding_pass and flights table. 
+	
+	we are joining boarding_pass table because from there we'll get number of seats.
+
+---> we need to find no. of seats booked.
+
+		pd.read_sql_query("""select aircraft_code, flights.flight_id, count(*) as seats_counts from boarding_passes
+				inner join flights
+                        			on boarding_passes.flight_id = flights.flight_id
+                        			group by aircraft_code , flights.flight_id""" , connection)
+
+
+
+	This will return the number of seat booked.
+
+
+-->
+
+		pd.read_sql_query("""select aircraft_code, count(*) as num_seats from seats group by aircraft_code""", connection)
+
+this will return the no. of seats in each aircraft.
+
+
+
+
+
+---> pd.read_sql_query("""
+    SELECT 
+        a.aircraft_code, 
+        AVG(a.seats_count) AS booked_seats, 
+        b.num_seats, 
+        AVG(a.seats_count) / b.num_seats AS occupancy_rate
+    FROM
+        (SELECT 
+             aircraft_code, 
+             flights.flight_id, 
+             COUNT(*) AS seats_count 
+         FROM 
+             boarding_passes
+             INNER JOIN flights ON boarding_passes.flight_id = flights.flight_id
+         GROUP BY 
+             aircraft_code, 
+             flights.flight_id) AS a
+        INNER JOIN
+             (SELECT aircraft_code, COUNT(*) AS num_seats FROM seats GROUP BY aircraft_code) AS b
+        ON 
+            a.aircraft_code = b.aircraft_code 
+    GROUP BY 
+        a.aircraft_code
+""", connection)
+
+
+		This will return the occupancy rate 
+
+
+***********************************************************************************
+
+
+Q.3) Calculate by how much the total annual turnover could increase by giving all aircraft a 10% higher occupancy rate
+
+---> first we will store the above query in a variable "occupancy_rate"
+
+	occupancy_rate = pd.read_sql_query("""
+    SELECT 
+        a.aircraft_code, 
+        AVG(a.seats_count) AS booked_seats, 
+        b.num_seats, 
+        AVG(a.seats_count) / b.num_seats AS occupancy_rate
+    FROM
+        (SELECT 
+             aircraft_code, 
+             flights.flight_id, 
+             COUNT(*) AS seats_count 
+         FROM 
+             boarding_passes
+             INNER JOIN flights ON boarding_passes.flight_id = flights.flight_id
+         GROUP BY 
+             aircraft_code, 
+             flights.flight_id) AS a
+        INNER JOIN
+             (SELECT aircraft_code, COUNT(*) AS num_seats FROM seats GROUP BY aircraft_code) AS b
+        ON 
+            a.aircraft_code = b.aircraft_code 
+    GROUP BY 
+        a.aircraft_code
+""", connection)
+
+
+
+
+
+
+---> occupancy_rate['Inc occupancy rate'] = occupancy_rate['occupancy_rate']+occupancy_rate['occupancy_rate']*0.1 
+occupancy_rate
+
+
+
+
+---> Now we;ll calculate total revenue for each aircraft
+
+		total_revenue = pd.read_sql_query("""select aircraft_code, sum(amount) as total_revenue from ticket_flights
+					           join flights on ticket_flights.flight_id = flights.flight_id group by aircraft_code""", connection)
+		
+
+		total_revenue
+
+
+
+
+
+
+
+
+
+
+
+----> Now to calculate increased turn over.
+
+	occupancy_rate['Inc Total Annual Turnover'] = (total_revenue['total_revenue']/occupancy_rate['occupancy_rate']) * occupancy_rate['Inc occupancy rate']
+
+
+	occupancy_rate
